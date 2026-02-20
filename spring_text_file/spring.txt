@@ -1,0 +1,4158 @@
+-------------------------------
+config(folder nam)
+--------------------------------
+package com.abc.SpringBootSecqurityEx.config;
+
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+
+import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadPoolExecutor;
+
+@Configuration
+@EnableAsync
+@EnableScheduling
+public class AsyncConfig {
+
+//    @Bean(name = "taskExecutor")
+//    public Executor taskExecutor() {
+//        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+//        executor.setCorePoolSize(10);
+//        executor.setMaxPoolSize(15);
+//        executor.setQueueCapacity(20);
+//        executor.setThreadNamePrefix("MyAsyncThread-");
+//        executor.initialize();
+//        return executor;
+//    }
+//
+        @Bean(name = "taskExecutor")
+        public Executor taskExecutor() {
+            ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+
+            // ✅ Fixed thread pool size
+            executor.setCorePoolSize(15);
+            executor.setMaxPoolSize(20);
+
+            // ✅ Set a queue size (how many tasks can wait)
+            executor.setQueueCapacity(20);
+
+            // ✅ Thread name prefix (for logging)
+            executor.setThreadNamePrefix("AsyncWorker-");
+
+            // ✅ Rejection policy: run in caller thread instead of throwing exception
+            executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+
+            executor.initialize();
+            return executor;
+        }
+
+
+}
+
+----------------------------------------
+
+package com.abc.SpringBootSecqurityEx.config;
+
+import io.swagger.v3.oas.models.Components;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Contact;
+import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.info.License;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+
+@Configuration
+//@EnableJpaAuditing
+public class JpaConfig {
+
+
+    private SecurityScheme createAPIKeyScheme() {
+        return new SecurityScheme().type(SecurityScheme.Type.HTTP)
+                .bearerFormat("JWT")
+                .scheme("bearer");
+    }
+
+    @Bean
+    public OpenAPI openAPI() {
+        return new OpenAPI().addSecurityItem(new SecurityRequirement().
+                        addList("Bearer Authentication"))
+                .components(new Components().addSecuritySchemes
+                        ("Bearer Authentication", createAPIKeyScheme()))
+                .info(new Info().title("My REST API")
+                        .description("JWT Test API")
+                        .version("1.0").contact(new Contact().name("Saiful")
+                                .email( "https://www.linkedin.com/in/saiful93/").url("gmsaiful71@gmail.com"))
+                        .license(new License().name("License of API")
+                                .url("API license URL")));
+    }
+}
+
+----------------------------------------
+
+package com.abc.SpringBootSecqurityEx.config;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+
+    @Value("${file.upload-dir}")
+    private String uploadDir;
+
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+
+        Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
+
+        registry.addResourceHandler("/uploads/**")
+                .addResourceLocations("file:" + uploadPath + "/")
+                .setCachePeriod(3600);
+    }
+}
+
+-----------------------------------------------
+controller(folder nam)
+-----------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.controller;
+
+import com.abc.SpringBootSecqurityEx.dtos.BrandDTO;
+import com.abc.SpringBootSecqurityEx.service.BrandService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/brands")
+@RequiredArgsConstructor
+public class BrandController {
+
+    private final BrandService brandService;
+
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<BrandDTO> create(
+            @RequestPart("brand") BrandDTO dto,
+            @RequestPart(value = "logo", required = false) MultipartFile logo) {
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(brandService.create(dto, logo));
+    }
+
+    @GetMapping
+    public ResponseEntity<List<BrandDTO>> getAll() {
+        return ResponseEntity.ok(brandService.getAll());
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<BrandDTO> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(brandService.getById(id));
+    }
+
+    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<BrandDTO> update(
+            @PathVariable Long id,
+            @RequestPart("brand") BrandDTO dto,
+            @RequestPart(value = "logo", required = false) MultipartFile logo) {
+
+        return ResponseEntity.ok(brandService.update(id, dto, logo));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        brandService.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+}
+
+------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.controller;
+
+import com.abc.SpringBootSecqurityEx.entity.Address;
+import com.abc.SpringBootSecqurityEx.service.AddressService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/addresses")
+@RequiredArgsConstructor
+@CrossOrigin(origins = "http://localhost:4200")  // Angular-এর জন্য
+public class AddressController {
+
+    private final AddressService addressService;
+
+    // ইউজারের সব অ্যাড্রেস
+    @GetMapping
+    public List<Address> getUserAddresses() {
+        return addressService.getUserAddresses();
+    }
+
+    // নতুন অ্যাড্রেস অ্যাড করা
+    @PostMapping
+    public Address addAddress(@RequestBody Address address) {
+        return addressService.addAddress(address);
+    }
+}  
+
+---------------------------------------------
+package com.abc.SpringBootSecqurityEx.controller;
+
+
+import com.abc.SpringBootSecqurityEx.dtos.CartDto;
+import com.abc.SpringBootSecqurityEx.dtos.CartItemRequest;
+import com.abc.SpringBootSecqurityEx.service.CartService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+
+@RestController
+@RequestMapping("/api/cart")
+@RequiredArgsConstructor
+public class CartController {
+
+    private final CartService cartService;
+
+    // Get the cart of the current user
+    @GetMapping
+    public ResponseEntity<CartDto> getCart() {
+        CartDto cartDto = cartService.getCart();
+        return ResponseEntity.ok(cartDto);
+    }
+
+    // Add an item to the cart of the current user
+    @PostMapping("/add")
+    public ResponseEntity<CartDto> addItemToCart(@Valid @RequestBody CartItemRequest request) {
+        CartDto cartDto = cartService.addItemToCart(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(cartDto);
+    }
+
+    // Update a cart item for the current user
+    @PutMapping("/update/{cartItemId}")
+    public ResponseEntity<CartDto> updateCartItem(
+            @PathVariable Long cartItemId,
+            @Valid @RequestBody CartItemRequest request) {
+        CartDto cartDto = cartService.updateCartItem(cartItemId, request);
+        return ResponseEntity.ok(cartDto);
+    }
+
+    // Remove a cart item for the current user
+    @DeleteMapping("/remove/{cartItemId}")
+    public ResponseEntity<Void> removeCartItem(@PathVariable Long cartItemId) {
+        cartService.removeCartItem(cartItemId);
+        return ResponseEntity.noContent().build();
+    }
+}
+
+
+---------------------------------------------------
+package com.abc.SpringBootSecqurityEx.controller;
+
+import com.abc.SpringBootSecqurityEx.dtos.CategoryDTO;
+import com.abc.SpringBootSecqurityEx.service.CategoryService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
+@RestController
+@RequestMapping("/api/categories")
+@RequiredArgsConstructor
+public class CategoryController {
+
+    private final CategoryService categoryService;
+
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<CategoryDTO> create(
+            @RequestPart("category") CategoryDTO dto,
+            @RequestPart(value = "image", required = false) MultipartFile image) {
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(categoryService.create(dto, image));
+    }
+
+    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<CategoryDTO> update(
+            @PathVariable Long id,
+            @RequestPart("category") CategoryDTO dto,
+            @RequestPart(value = "image", required = false) MultipartFile image) {
+
+        return ResponseEntity.ok(categoryService.update(id, dto, image));
+    }
+
+    @GetMapping
+    public ResponseEntity<List<CategoryDTO>> getAll() {
+        return ResponseEntity.ok(categoryService.getAll());
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<CategoryDTO> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(categoryService.getById(id));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        categoryService.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+}
+
+----------------------------------------------------
+package com.abc.SpringBootSecqurityEx.controller;
+
+
+import com.abc.SpringBootSecqurityEx.service.InventoryService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+@RestController
+@RequestMapping("/api/inventory")
+@RequiredArgsConstructor
+public class InventoryController {
+
+    private final InventoryService inventoryService;
+
+    @PutMapping("/{productId}")
+    public ResponseEntity<Void> updateStock(
+            @PathVariable Long productId,
+            @RequestParam Integer quantity) {
+
+        inventoryService.updateStock(productId, quantity);
+        return ResponseEntity.ok().build();
+    }
+}
+
+------------------------------------------
+package com.abc.SpringBootSecqurityEx.controller;
+
+import com.abc.SpringBootSecqurityEx.dtos.CheckoutRequest;
+import com.abc.SpringBootSecqurityEx.dtos.OrderDto;
+import com.abc.SpringBootSecqurityEx.dtos.UpdateStatusRequest;
+import com.abc.SpringBootSecqurityEx.service.OrderService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/orders")
+@RequiredArgsConstructor
+public class OrderController {
+
+    private final OrderService orderService;
+
+    // User: Create order from cart
+    @PostMapping("/checkout")
+    public OrderDto checkout(@RequestBody CheckoutRequest request) {
+        return orderService.createOrder(request);
+    }
+
+    // User: Get all orders of current logged-in user
+    @GetMapping
+    public List<OrderDto> getUserOrders() {
+        return orderService.getUserOrders();
+    }
+
+    // User: Get single order by ID
+    @GetMapping("/{id}")
+    public OrderDto getOrder(@PathVariable("id") Long id) {
+        return orderService.getOrder(id);
+    }
+
+    // ADMIN ONLY: Get ALL orders from all users
+    @GetMapping("/all")
+    @PreAuthorize("hasRole('ADMIN')")   // শুধু ADMIN দেখতে পারবে
+    public List<OrderDto> getAllOrders() {
+        return orderService.getAllOrders();
+    }
+
+
+    // ADMIN ONLY: Update order status
+    @PutMapping("/{id}/status")
+    @PreAuthorize("hasRole('ADMIN')")
+    public OrderDto updateOrderStatus(
+            @PathVariable Long id,
+            @RequestBody UpdateStatusRequest request) {
+        return orderService.updateOrderStatus(id, request.getStatus());
+    }
+}  
+
+--------------------------------------------------
+package com.abc.SpringBootSecqurityEx.controller;
+
+import com.abc.SpringBootSecqurityEx.dtos.ProductRequestDTO;
+import com.abc.SpringBootSecqurityEx.dtos.ProductResponseDTO;
+import com.abc.SpringBootSecqurityEx.service.ProductService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/products")
+@RequiredArgsConstructor
+public class ProductController {
+
+    private final ProductService productService;
+
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ProductResponseDTO> create(
+            @RequestPart("product") @Valid ProductRequestDTO dto,
+            @RequestPart(value = "images", required = false) List<MultipartFile> images) {
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(productService.create(dto, images));
+    }
+
+    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ProductResponseDTO> update(
+            @PathVariable Long id,
+            @RequestPart("product") @Valid ProductRequestDTO dto,
+            @RequestPart(value = "images", required = false) List<MultipartFile> images) {
+
+        return ResponseEntity.ok(productService.update(id, dto, images));
+    }
+
+    // ফিক্সড: brandId দিয়ে ফিল্টার করা
+    @GetMapping
+    public ResponseEntity<List<ProductResponseDTO>> getAll(
+            @RequestParam(required = false) Long brandId) {
+
+        List<ProductResponseDTO> products;
+        if (brandId != null) {
+            products = productService.getByBrandId(brandId);
+        } else {
+            products = productService.getAll();
+        }
+        return ResponseEntity.ok(products);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ProductResponseDTO> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(productService.getById(id));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        productService.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+} 
+
+--------------------------------------------
+package com.abc.SpringBootSecqurityEx.controller;
+
+import com.abc.SpringBootSecqurityEx.dtos.ProductReviewDTO;
+import com.abc.SpringBootSecqurityEx.service.ProductReviewService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+
+
+@RestController
+@RequestMapping("/api/reviews")
+@RequiredArgsConstructor
+public class ProductReviewController {
+
+    private final ProductReviewService productReviewService;
+
+    @PostMapping
+    public ResponseEntity<Void> add(@RequestBody @Valid ProductReviewDTO dto) {
+        productReviewService.add(dto);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+}
+  
+-------------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.controller;
+
+import com.abc.SpringBootSecqurityEx.dtos.ProductVariantDTO;
+import com.abc.SpringBootSecqurityEx.service.ProductVariantService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/product-variants")
+@RequiredArgsConstructor
+public class ProductVariantController {
+
+    private final ProductVariantService productVariantService;
+
+    @PostMapping
+    public ResponseEntity<Void> create(@RequestBody @Valid ProductVariantDTO dto) {
+        productVariantService.create(dto);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+}
+ 
+
+-----------------------------------------------------------
+dtos(folder nam)
+---------------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos;
+
+
+import lombok.*;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class ApiResponse<T> {
+
+    private Boolean success;
+    private String message;
+    private T data;
+}
+
+---------------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos;
+
+
+import com.abc.SpringBootSecqurityEx.entity.Brand;
+import jakarta.validation.constraints.NotBlank;
+import lombok.*;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class BrandDTO {
+
+    private Long id;
+
+    @NotBlank
+    private String name;
+    private String description;
+    private String logoUrl;
+
+}
+  
+---------------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos;
+
+import com.abc.SpringBootSecqurityEx.entity.Cart;
+import lombok.Data;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Data
+public class CartDto {
+
+    private Long cartId;
+    private List<ItemDto> items;
+    private BigDecimal totalAmount;
+
+
+}
+
+----------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos;
+
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+@Data
+public class CartItemRequest {
+
+    @NotNull
+    private Long productId;
+
+    @Min(1)
+    private Integer quantity;
+}
+
+---------------------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.dtos;
+
+
+import jakarta.validation.constraints.NotBlank;
+import lombok.*;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class CategoryDTO {
+
+    private Long id;
+
+    @NotBlank
+    private String name;
+
+    private String imageUrl;
+
+    private Long parentId; // for sub-categories
+}
+
+-----------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos;
+
+import lombok.Data;
+
+@Data
+public class CheckoutRequest {
+    private String paymentMethod;
+    private String street;
+    private String city;
+    private String country;
+    private String zipCode;
+
+    private String shippingMethod;  // যোগ করো
+
+    // getter setter (lombok ব্যবহার করলে @Data থাকলে অটো হবে)
+    public String getShippingMethod() {
+        return shippingMethod;
+    }
+
+    public void setShippingMethod(String shippingMethod) {
+        this.shippingMethod = shippingMethod;
+    }
+} 
+
+
+---------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos;
+
+
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
+import lombok.*;
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class InventoryDTO {
+
+    private Long id;
+
+    @NotNull
+    private Long productId;
+
+    @PositiveOrZero
+    private Integer availableQuantity;
+
+    @PositiveOrZero
+    private Integer reservedQuantity;
+}
+
+--------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos;
+
+import lombok.Data;
+
+import java.math.BigDecimal;
+
+@Data
+public class ItemDto {
+    private Long itemId;
+    private Long productId;
+    private String productName;
+    private Integer quantity;
+    private BigDecimal price;
+    private BigDecimal total; // Total price for this item (quantity * price)
+    private String imageUrl;
+}
+
+----------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos;
+
+import com.abc.SpringBootSecqurityEx.enums.OrderStatus;
+import com.abc.SpringBootSecqurityEx.enums.PaymentStatus;
+import lombok.Data;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Data
+public class OrderDto {
+
+    private Long orderId;
+    private OrderStatus status;
+    private PaymentStatus paymentStatus;
+    private BigDecimal totalAmount;
+    private String paymentMethod;
+    private List<ItemDto> items;
+
+    // নতুন যোগ করা ফিল্ড
+    private LocalDateTime createdAt;
+
+    // অ্যাডমিনের জন্য ইউজারের নাম দেখানোর জন্য (অপশনাল কিন্তু ভালো লাগবে)
+    private String userName;
+
+    private String shippingAddressInfo;
+}
+
+-------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.*;
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class ProductImageDTO {
+
+    private Long id;
+
+    @NotBlank
+    private String imageUrl;
+
+    private Boolean primaryImage;
+
+    @NotNull
+    private Long productId;
+}
+
+----------------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
+import lombok.*;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Set;
+
+@Data
+public class ProductRequestDTO {
+
+    @NotBlank
+    private String name;
+
+    private String description;
+
+    @NotNull
+    @Positive
+    private BigDecimal price;
+
+    private BigDecimal discountPrice;
+
+    private String sku;
+
+    @NotNull
+    @PositiveOrZero
+    private Integer stockQuantity;
+
+    private Long brandId;
+
+    private Set<Long> categoryIds;
+
+    private List<String> imageUrls;
+}
+
+------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos;
+
+import lombok.Builder;
+import lombok.Data;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Set;
+
+@Data
+@Builder
+public class ProductResponseDTO {
+
+    private Long id;
+    private String name;
+    private String description;
+
+    private BigDecimal price;
+    private BigDecimal discountPrice;
+
+    private Boolean active;
+    private String sku;
+    private Integer stockQuantity;
+
+    private String brandName;
+    private Set<String> categories;
+    private List<String> images;
+
+    private LocalDateTime createdAt;
+}
+
+---------------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.*;
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class ProductReviewDTO {
+
+    private Long id;
+
+    @Min(1)
+    @Max(5)
+    private Integer rating;
+
+    private String comment;
+
+    @NotNull
+    private Long productId;
+
+    @NotNull
+    private String userId;
+}
+
+----------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.dtos;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.math.BigDecimal;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class ProductVariantDTO {
+
+    private Long id;
+
+    @NotBlank
+    private String variantName;   // Color, Size, RAM
+
+    @NotBlank
+    private String variantValue;  // Red, XL, 8GB
+
+    private BigDecimal priceAdjustment;
+
+    @PositiveOrZero
+    private Integer stock;
+
+    @NotNull
+    private Long productId;
+}
+-----------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos;
+
+
+import com.abc.SpringBootSecqurityEx.enums.OrderStatus;
+import lombok.Data;
+
+@Data
+public class UpdateStatusRequest {
+    private OrderStatus status;
+}
+
+
+--------------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos.secqurity;
+
+import com.abc.SpringBootSecqurityEx.entity.Role;
+
+import java.util.List;
+
+public record AdminStatistics(long totalUsers, long enabledUsers, List<Role> roles) {
+}
+
+
+
+-------------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos.secqurity;
+
+
+
+import com.abc.SpringBootSecqurityEx.entity.User;
+
+public record JwtResponse(
+        String jwtToken,
+        User user
+) {}
+----------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos.secqurity;
+
+
+public record LoginRequest(String username, String password) {}
+
+
+----------------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.dtos.secqurity;
+
+
+public record RegisterRequest(
+        String username,
+        String password,
+        String email,
+        String firstName,
+        String lastName
+) {}
+-------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.dtos.secqurity;
+
+// DTOs for Admin Controller
+public record RoleCreateRequest(String roleName, String roleDescription) {
+}
+
+
+----------------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos.secqurity;
+
+import jakarta.validation.constraints.Size;
+import lombok.Getter;
+import lombok.Setter;
+
+
+@Getter
+@Setter
+public class RoleDTO {
+
+    @Size(max = 255)
+    private String roleName;
+
+    @Size(max = 255)
+    private String roleDescription;
+
+}
+----------------------------------------------
+package com.abc.SpringBootSecqurityEx.dtos.secqurity;
+
+import java.util.Set;
+
+public record RoleUpdateRequest(Set<String> roles) {
+}
+-------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.dtos.secqurity;
+
+public record StatusUpdateRequest(Boolean enabled) {
+}
+
+
+---------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.dtos.secqurity;
+
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
+
+import java.util.List;
+
+
+@Getter
+@Setter
+@ToString
+public class UserDTO {
+
+    @Size(max = 255)
+    private String userName;
+
+    @Size(max = 255)
+    private String userFirstName;
+
+    @Size(max = 255)
+    private String userLastName;
+
+    @Size(max = 255)
+    private String password;
+
+    @NotNull
+    @Size(max = 255)
+    private String email;
+
+    private Boolean enabled;
+
+    private Boolean credentialsNonExpired;
+
+    private Boolean accountNonExpired;
+
+    private Boolean accountNonLocked;
+
+    private List<String> roles;
+
+}
+---------------------------------------------------
+
+
+package com.abc.SpringBootSecqurityEx.dtos.secqurity;
+
+// DTO for update requests
+public record UserUpdateRequest(String firstName, String lastName, String email) {
+}
+
+
+-------------------------------------------------------
+entity(folder name)
+------------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.ManyToOne;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
+@EqualsAndHashCode(callSuper = true)
+@Entity
+@Data
+public class Address extends BaseEntity {
+
+    private String street;
+    private String city;
+    private String country;
+    private String zipCode;
+
+    @ManyToOne
+    private User user;
+}
+----------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.time.LocalDateTime;
+
+@MappedSuperclass
+@Getter @Setter
+public abstract class BaseEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private Boolean deleted = false;
+
+    @CreationTimestamp
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    private LocalDateTime updatedAt;
+}
+--------------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "brands")
+@Getter
+@Setter
+public class Brand {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String name;
+    private String description;
+    private String logoUrl;
+}
+-----------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Getter
+@Setter
+public class Cart extends BaseEntity {
+
+    @OneToOne
+    private User user;
+
+
+    @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<CartItem> items = new ArrayList<>();
+
+    // Total amount of the cart. This should be updated whenever items are added/removed.
+    private BigDecimal totalAmount;
+
+    // Indicates if the cart is still active (i.e., user hasn't checked out yet).
+    private Boolean active = true;
+
+    public void calculateTotalAmount() {
+        this.totalAmount = this.items.stream()
+                .map(CartItem::getTotalPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+//    public void calculateTotalAmount() {
+//        this.totalAmount = this.items.stream()
+//                .map(item -> item.getProduct().getPrice().multiply(new BigDecimal(item.getQuantity())))
+//                .reduce(BigDecimal.ZERO, BigDecimal::add);
+//    }
+}
+------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.math.BigDecimal;
+
+@Entity
+@Getter
+@Setter
+public class CartItem extends BaseEntity {
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    private Cart cart;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    private Product product;
+
+    private Integer quantity;
+
+    // Calculate total price for this cart item
+    public BigDecimal getTotalPrice() {
+        return product.getPrice().multiply(new BigDecimal(quantity));
+    }
+}
+-----------------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.util.List;
+
+@Entity
+@Table(name = "categories")
+@Getter
+@Setter
+public class Category {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String name;
+
+    private String imageUrl;
+
+    @ManyToOne
+    @JoinColumn(name = "parent_id")
+    private Category parent;
+
+    @OneToMany(mappedBy = "parent")
+    private List<Category> subCategories;
+}
+-----------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "inventory")
+@Getter @Setter
+public class Inventory {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private Integer availableQuantity;
+
+    private Integer reservedQuantity;
+
+    @OneToOne
+    @JoinColumn(name = "product_id")
+    private Product product;
+}
+----------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+
+import com.abc.SpringBootSecqurityEx.enums.OrderStatus;
+import com.abc.SpringBootSecqurityEx.enums.ShippingMethod;
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+
+@EqualsAndHashCode(callSuper = true)
+@Entity
+@Table(name = "orders")
+@Data
+public class Order extends BaseEntity {
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal subtotal = BigDecimal.ZERO;
+
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal deliveryCharge = BigDecimal.valueOf(60);
+
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal totalAmount = BigDecimal.ZERO;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private OrderStatus status = OrderStatus.PENDING;
+
+    @Column(nullable = false, length = 50)
+    private String paymentMethod;
+
+    @Column(length = 20)
+    private String bkashNumber;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ShippingMethod shippingMethod = ShippingMethod.INSIDE_DHAKA;
+
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<OrderItem> items = new ArrayList<>();
+
+    @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private Payment payment;
+
+    @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JoinColumn(name = "shipping_address_id")
+    private Address shippingAddress;
+
+    // Helper method to calculate totals
+    public void calculateTotals() {
+        if (this.items == null) {
+            this.subtotal = BigDecimal.ZERO;
+        } else {
+            this.subtotal = this.items.stream()
+                    .map(OrderItem::getTotalPrice)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
+
+        this.totalAmount = this.subtotal.add(this.deliveryCharge);
+    }
+
+    // Optional: Pre-persist hook to auto calculate
+    @PrePersist
+    @PreUpdate
+    private void preSave() {
+        calculateTotals();
+    }
+}
+-------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.math.BigDecimal;
+
+@Entity
+@Getter
+@Setter
+public class OrderItem extends BaseEntity {
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id")
+    private Order order;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_id")
+    private Product product;
+
+    @Column(nullable = false)
+    private Integer quantity;
+
+    // প্রোডাক্টের দাম * কোয়ান্টিটি
+    public BigDecimal getTotalPrice() {
+        if (product == null || product.getPrice() == null) return BigDecimal.ZERO;
+        return product.getPrice().multiply(new BigDecimal(quantity));
+    }
+}
+--------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+
+import com.abc.SpringBootSecqurityEx.enums.PaymentStatus;
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
+@EqualsAndHashCode(callSuper = true)
+@Entity
+@Data
+public class Payment extends BaseEntity {
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id")
+    private Order order;
+
+
+    private String provider; // Stripe, SSLCommerz, PayPal
+    private String transactionId;
+
+    @Enumerated(EnumType.STRING)
+    private PaymentStatus status;
+}
+---------------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Set;
+
+@Entity
+@Table(name = "products")
+@Getter
+@Setter
+public class Product {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String name;
+
+    @Column(length = 5000)
+    private String description;
+
+    @Column(nullable = false)
+    private BigDecimal price;
+
+    private BigDecimal discountPrice;
+
+    @Column(nullable = false)
+    private Boolean active = true;
+
+    private String sku;
+
+    private Integer stockQuantity;
+
+    @ManyToOne
+    @JoinColumn(name = "brand_id")
+    private Brand brand;
+
+    @ManyToMany
+    @JoinTable(
+            name = "product_categories",
+            joinColumns = @JoinColumn(name = "product_id"),
+            inverseJoinColumns = @JoinColumn(name = "category_id")
+    )
+    private Set<Category> categories;
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ProductImage> images;
+
+    @OneToMany(mappedBy = "product")
+    private List<ProductReview> reviews;
+
+    @OneToMany(mappedBy = "product")
+    private List<ProductVariant> variants;
+
+    @CreationTimestamp
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    private LocalDateTime updatedAt;
+}
+
+---------------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "product_images")
+@Getter @Setter
+public class ProductImage {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String imageUrl;
+
+    private Boolean primaryImage = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_id")
+    private Product product;
+}
+
+
+----------------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.time.LocalDateTime;
+
+
+@Entity
+@Table(name = "product_reviews")
+@Getter @Setter
+public class ProductReview {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private Integer rating; // 1–5
+
+    private String comment;
+
+    @ManyToOne
+    @JoinColumn(name = "product_id")
+    private Product product;
+
+    @ManyToOne
+    @JoinColumn(name = "user_id")
+    private User user;
+
+    private LocalDateTime createdAt;
+}
+
+------------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+
+
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.math.BigDecimal;
+
+
+@Entity
+@Table(name = "product_variants")
+@Getter @Setter
+public class ProductVariant {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String variantName; // Color / Size / RAM
+
+    private String variantValue; // Red / XL / 8GB
+
+    private BigDecimal priceAdjustment;
+
+    private Integer stock;
+
+    @ManyToOne
+    @JoinColumn(name = "product_id")
+    private Product product;
+}
+-----------------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.time.OffsetDateTime;
+
+
+@Entity
+@Table(name = "role")
+@EntityListeners(AuditingEntityListener.class)
+@Getter
+@Setter
+public class Role {
+
+    @Id
+    @Column(nullable = false, updatable = false)
+    private String roleName;
+
+    @Column
+    private String roleDescription;
+
+    @CreatedDate
+    @Column(nullable = false, updatable = false)
+    private OffsetDateTime dateCreated;
+
+    @LastModifiedDate
+    @Column(nullable = false)
+    private OffsetDateTime lastUpdated;
+
+}
+-----------------------------------------------------
+package com.abc.SpringBootSecqurityEx.entity;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.time.OffsetDateTime;
+import java.util.Set;
+
+@Entity
+@EntityListeners(AuditingEntityListener.class)
+@Getter
+@Setter
+public class User {
+
+    @Id
+    @Column(nullable = false, updatable = false)
+    private String userName;
+
+    @Column
+    private String userFirstName;
+
+    @Column
+    private String userLastName;
+
+    @Column
+    private String password;
+
+    @Column(nullable = false, unique = true)
+    private String email;
+
+    // Initialize all Boolean fields with default values
+    @Column
+    private Boolean enabled = true;
+
+    @Column
+    private Boolean credentialsNonExpired = true;
+
+    @Column
+    private Boolean accountNonExpired = true;
+
+    @Column
+    private Boolean accountNonLocked = true;
+
+    @ManyToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
+    @JoinTable(
+            name = "userrole",
+            joinColumns = @JoinColumn(name = "user_name"),
+            inverseJoinColumns = @JoinColumn(name = "role_name")
+    )
+    private Set<Role> roles;
+
+    @CreatedDate
+    @Column(nullable = false, updatable = false)
+    private OffsetDateTime dateCreated;
+
+    @LastModifiedDate
+    @Column(nullable = false)
+    private OffsetDateTime lastUpdated;
+
+    public User(String userName, String email, String password) {
+        this.userName = userName;
+        this.password = password;
+        this.email = email;
+        // Initialize Booleans in constructor too
+        this.enabled = true;
+        this.credentialsNonExpired = true;
+        this.accountNonExpired = true;
+        this.accountNonLocked = true;
+    }
+
+    public User() {
+        // Initialize in default constructor
+        this.enabled = true;
+        this.credentialsNonExpired = true;
+        this.accountNonExpired = true;
+        this.accountNonLocked = true;
+    }
+
+    // Remove @PrePersist and @PreUpdate since you're using @EnableJpaAuditing
+     @PrePersist
+     void createdAt() {
+         this.dateCreated = this.lastUpdated = OffsetDateTime.now();
+     }
+
+     @PreUpdate
+     void updatedAt() {
+         this.lastUpdated = OffsetDateTime.now();
+     }
+}
+
+---------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.enums;
+
+public enum ERole {
+  ROLE_USER,
+  ROLE_MODERATOR,
+  ROLE_ADMIN,
+  ROLE_EMPLOYEE
+}
+------------------------------------------------
+package com.abc.SpringBootSecqurityEx.enums;
+
+public enum OrderStatus {
+    PENDING, PAID, SHIPPED, DELIVERED, CANCELLED
+}
+-------------------------------------------------
+package com.abc.SpringBootSecqurityEx.enums;
+
+public enum PaymentStatus {
+    INITIATED, SUCCESS, FAILED
+}
+-----------------------------------------------------
+package com.abc.SpringBootSecqurityEx.enums;
+
+public enum ShippingMethod {
+    INSIDE_DHAKA,
+    OUTSIDE_DHAKA
+}
+
+------------------------------------------------------
+repository(folder nam)
+---------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.repository;
+
+import com.abc.SpringBootSecqurityEx.entity.Address;
+import com.abc.SpringBootSecqurityEx.entity.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface AddressRepository extends JpaRepository<Address, Long> {
+
+    // লগইন করা ইউজারের সব অ্যাড্রেস পাওয়ার জন্য
+    List<Address> findByUser(User user);
+
+    // অর্ডারে ব্যবহারের জন্য (যাচাই করবে অ্যাড্রেসটা ইউজারের কিনা)
+    Optional<Address> findByIdAndUser(Long id, User user);
+}
+
+-------------------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.repository;
+
+import com.abc.SpringBootSecqurityEx.entity.Brand;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface BrandRepository extends JpaRepository<Brand, Long> {
+}
+
+------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.repository;
+
+import com.abc.SpringBootSecqurityEx.entity.Brand;
+import com.abc.SpringBootSecqurityEx.entity.CartItem;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface CartItemRepository extends JpaRepository<CartItem, Long> {
+}
+--------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.repository;
+
+import com.abc.SpringBootSecqurityEx.entity.Cart;
+import com.abc.SpringBootSecqurityEx.entity.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface CartRepository extends JpaRepository<Cart, Long> {
+    Optional<Cart> findByUser(User user);
+}
+--------------------------------------------------
+package com.abc.SpringBootSecqurityEx.repository;
+
+import com.abc.SpringBootSecqurityEx.entity.Brand;
+import com.abc.SpringBootSecqurityEx.entity.Category;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface CategoryRepository extends JpaRepository<Category, Long> {
+}
+----------------------------------------------
+package com.abc.SpringBootSecqurityEx.repository;
+
+import com.abc.SpringBootSecqurityEx.entity.Brand;
+import com.abc.SpringBootSecqurityEx.entity.Inventory;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface InventoryRepository extends JpaRepository<Inventory, Long> {
+    Optional<Inventory> findByProductId(Long productId);
+}
+--------------------------------------------------
+package com.abc.SpringBootSecqurityEx.repository;
+
+import com.abc.SpringBootSecqurityEx.entity.OrderItem;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
+}
+-----------------------------------------------------
+package com.abc.SpringBootSecqurityEx.repository;
+
+import com.abc.SpringBootSecqurityEx.entity.Order;
+import com.abc.SpringBootSecqurityEx.entity.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+
+@Repository
+public interface OrderRepository extends JpaRepository<Order, Long> {
+    List<Order> findByUser(User user);
+}
+--------------------------------------------------
+package com.abc.SpringBootSecqurityEx.repository;
+
+import com.abc.SpringBootSecqurityEx.entity.Brand;
+import com.abc.SpringBootSecqurityEx.entity.ProductImage;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface ProductImageRepository extends JpaRepository<ProductImage, Long> {
+}
+--------------------------------------------------
+package com.abc.SpringBootSecqurityEx.repository;
+
+import com.abc.SpringBootSecqurityEx.entity.Product;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface ProductRepository extends JpaRepository<Product, Long> {
+
+    // ব্র্যান্ড আইডি দিয়ে প্রোডাক্ট লোড করার মেথড
+    List<Product> findByBrandId(Long brandId);
+
+    // অপশনাল: ক্যাটাগরি দিয়েও ফিল্টার করতে চাইলে
+    // List<Product> findByCategoryId(Long categoryId);
+}
+
+------------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.repository;
+
+import com.abc.SpringBootSecqurityEx.entity.Brand;
+import com.abc.SpringBootSecqurityEx.entity.ProductReview;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface ProductReviewRepository extends JpaRepository<ProductReview, Long> {
+}
+--------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.repository;
+
+import com.abc.SpringBootSecqurityEx.entity.Brand;
+import com.abc.SpringBootSecqurityEx.entity.ProductVariant;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface ProductVariantRepository extends JpaRepository<ProductVariant, Long> {
+}
+------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.repository;
+
+
+import com.abc.SpringBootSecqurityEx.entity.Role;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import java.util.Optional;
+
+@Repository
+public interface RoleRepository extends JpaRepository<Role, String> {
+    Optional<Role> findByRoleName(String roleName);
+
+    boolean existsByRoleNameIgnoreCase(String roleName);
+}
+-------------------------------------------------
+package com.abc.SpringBootSecqurityEx.repository;
+
+
+import com.abc.SpringBootSecqurityEx.entity.User;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import java.util.Optional;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, String> {
+    Optional<User> findByUserName(String userName);
+    Optional<User> findByEmail(String email);
+    Boolean existsByUserName(String userName);
+    Boolean existsByEmail(String email);
+
+    Page<User> findByUserNameContainingIgnoreCaseOrUserFirstNameContainingIgnoreCaseOrUserLastNameContainingIgnoreCaseOrEmailContainingIgnoreCase(String searchTerm, String searchTerm1, String searchTerm2, String searchTerm3, Pageable pageable);
+
+    boolean existsByUserNameIgnoreCase(String userName);
+
+    boolean existsByEmailIgnoreCase(String email);
+}
+
+-------------------------------------------------------
+restController(folder name)
+------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.restController;
+import com.abc.SpringBootSecqurityEx.dtos.secqurity.AdminStatistics;
+import com.abc.SpringBootSecqurityEx.dtos.secqurity.RoleCreateRequest;
+import com.abc.SpringBootSecqurityEx.dtos.secqurity.RoleUpdateRequest;
+import com.abc.SpringBootSecqurityEx.entity.Role;
+import com.abc.SpringBootSecqurityEx.entity.User;
+import com.abc.SpringBootSecqurityEx.repository.RoleRepository;
+import com.abc.SpringBootSecqurityEx.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+@RestController
+@RequestMapping("/api/admin")
+//@CrossOrigin(origins = "*", maxAge = 3600)
+//@PreAuthorize("hasRole('ADMIN')")  // Fixed: changed USER to ADMIN
+@PreAuthorize("hasAuthority('ROLE_ADMIN')")  // Use hasAuthority with full name
+public class AdminController {
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private RoleRepository roleRepository;
+
+    // GET ALL ROLES
+    @GetMapping("/roles")
+    public ResponseEntity<List<Role>> getAllRoles() {
+        List<Role> roles = roleRepository.findAll();
+        return ResponseEntity.ok(roles);
+    }
+
+    // CREATE NEW ROLE
+    @PostMapping("/roles")
+    public ResponseEntity<Role> createRole(@RequestBody RoleCreateRequest createRequest) {
+        if (roleRepository.existsById(createRequest.roleName())) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        Role role = new Role();
+        role.setRoleName(createRequest.roleName());
+        role.setRoleDescription(createRequest.roleDescription());
+
+        Role savedRole = roleRepository.save(role);
+        return ResponseEntity.ok(savedRole);
+    }
+
+    // UPDATE USER ROLES
+    @PutMapping("/users/{username}/roles")
+    public ResponseEntity<User> updateUserRoles(
+            @PathVariable String username,
+            @RequestBody RoleUpdateRequest roleUpdateRequest) {
+
+        Optional<User> existingUser = userRepository.findByUserName(username);
+        if (existingUser.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        User user = existingUser.get();
+        Set<Role> newRoles = new HashSet<>();
+
+        for (String roleName : roleUpdateRequest.roles()) {
+            Optional<Role> role = roleRepository.findByRoleName(roleName);
+            if (role.isEmpty()) {
+                return ResponseEntity.badRequest().build();
+            }
+            newRoles.add(role.get());
+        }
+
+        user.setRoles(newRoles);
+        User updatedUser = userRepository.save(user);
+
+        return ResponseEntity.ok(updatedUser);
+    }
+
+    // GET USERS BY ROLE
+    @GetMapping("/roles/{roleName}/users")
+    public ResponseEntity<List<User>> getUsersByRole(@PathVariable String roleName) {
+        Optional<Role> role = roleRepository.findByRoleName(roleName);
+        if (role.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        List<User> users = userRepository.findAll().stream()
+                .filter(user -> user.getRoles().contains(role.get()))
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(users);
+    }
+
+    // SYSTEM STATISTICS - Only super admin can access
+    @GetMapping("/statistics")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")  // More restrictive than class-level
+    public ResponseEntity<AdminStatistics> getSystemStatistics() {
+        long totalUsers = userRepository.count();
+        long enabledUsers = userRepository.findAll().stream()
+                .filter(User::getEnabled)
+                .count();
+        List<Role> allRoles = roleRepository.findAll();
+
+        AdminStatistics stats = new AdminStatistics(totalUsers, enabledUsers, allRoles);
+        return ResponseEntity.ok(stats);
+    }
+}
+
+-------------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.restController;
+
+import com.abc.SpringBootSecqurityEx.dtos.secqurity.JwtResponse;
+import com.abc.SpringBootSecqurityEx.dtos.secqurity.LoginRequest;
+import com.abc.SpringBootSecqurityEx.dtos.secqurity.RegisterRequest;
+import com.abc.SpringBootSecqurityEx.service.AuthService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/auth")
+@CrossOrigin(origins = "*", maxAge = 3600)
+public class AuthController {
+
+    @Autowired
+    private AuthService authService;
+
+    @PostMapping("/signin")
+    public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
+        try {
+            JwtResponse jwtResponse = authService.login(loginRequest);
+            return ResponseEntity.ok(jwtResponse);
+        } catch (BadCredentialsException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid credentials");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Login failed: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/signup")
+    public ResponseEntity<?> register(@RequestBody RegisterRequest registerRequest) {
+        try {
+            String result = authService.register(registerRequest);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Registration failed: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/init-roles")
+    public ResponseEntity<?> initRoles() {
+        try {
+            String result = authService.initializeRoles();
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error initializing roles: " + e.getMessage());
+        }
+    }
+
+
+}
+
+
+
+//package com.abc.SpringBootSecqurityEx.controller;
+//
+//
+//import com.abc.SpringBootSecqurityEx.dtos.secqurity.JwtResponse;
+//import com.abc.SpringBootSecqurityEx.dtos.secqurity.LoginRequest;
+//import com.abc.SpringBootSecqurityEx.dtos.secqurity.RegisterRequest;
+//import com.abc.SpringBootSecqurityEx.entity.*;
+//import com.abc.SpringBootSecqurityEx.repository.RoleRepository;
+//import com.abc.SpringBootSecqurityEx.repository.UserRepository;
+//import com.abc.SpringBootSecqurityEx.secqurity.JwtUtil;
+//import org.springframework.beans.factory.annotation.Autowired;
+//import org.springframework.http.HttpStatus;
+//import org.springframework.http.ResponseEntity;
+//import org.springframework.security.authentication.AuthenticationManager;
+//import org.springframework.security.authentication.BadCredentialsException;
+//import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+//import org.springframework.security.core.Authentication;
+//import org.springframework.security.core.GrantedAuthority;
+//import org.springframework.security.core.context.SecurityContextHolder;
+//import org.springframework.security.crypto.password.PasswordEncoder;
+//import org.springframework.web.bind.annotation.*;
+//
+//import java.util.Collection;
+//import java.util.HashSet;
+//import java.util.Set;
+//import java.util.stream.Collectors;
+//
+//@RestController
+//@RequestMapping("/api/auth")
+//@CrossOrigin(origins = "*", maxAge = 3600)
+//public class AuthController {
+//
+//    @Autowired
+//    private AuthenticationManager authenticationManager;
+//
+//    @Autowired
+//    private JwtUtil jwtUtil;
+//
+//    @Autowired
+//    private UserRepository userRepository;
+//
+//    @Autowired
+//    private RoleRepository roleRepository;
+//
+//    @Autowired
+//    private PasswordEncoder passwordEncoder;
+//
+//    @PostMapping("/login")
+//    public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
+//        try {
+//            Authentication authentication = authenticationManager.authenticate(
+//                    new UsernamePasswordAuthenticationToken(
+//                            loginRequest.username(),
+//                            loginRequest.password()
+//                    )
+//            );
+//
+//            SecurityContextHolder.getContext().setAuthentication(authentication);
+//            String jwt = jwtUtil.generateToken(loginRequest.username());
+//
+//            User user = userRepository.findByUserName(loginRequest.username())
+//                    .orElseThrow(() -> new RuntimeException("User not found"));
+//
+//            Collection<String> roles = authentication.getAuthorities().stream()
+//                    .map(GrantedAuthority::getAuthority)
+//                    .collect(Collectors.toList());
+//
+//            return ResponseEntity.ok(new JwtResponse(
+//                    jwt,
+//                    user,
+//                    user.getUserName(),
+//                    user.getEmail(),
+//                    roles
+//            ));
+//
+//        } catch (BadCredentialsException e) {
+//            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid credentials");
+//        }
+//    }
+//
+//    @PostMapping("/register")
+//    public ResponseEntity<?> register(@RequestBody RegisterRequest registerRequest) {
+//        if (userRepository.existsByUserName(registerRequest.username())) {
+//            return ResponseEntity.badRequest().body("Username already exists");
+//        }
+//
+//        if (userRepository.existsByEmail(registerRequest.email())) {
+//            return ResponseEntity.badRequest().body("Email already exists");
+//        }
+//
+//        User user = new User();
+//        user.setUserName(registerRequest.username());
+//        user.setPassword(passwordEncoder.encode(registerRequest.password()));
+//        user.setEmail(registerRequest.email());
+//        user.setUserFirstName(registerRequest.firstName());
+//        user.setUserLastName(registerRequest.lastName());
+//
+//        // Set default values
+//        user.setEnabled(true);
+//        user.setAccountNonExpired(true);
+//        user.setCredentialsNonExpired(true);
+//        user.setAccountNonLocked(true);
+//
+//        // Set roles
+//        Set<Role> roles = new HashSet<>();
+//        if (registerRequest.roles() == null || registerRequest.roles().isEmpty()) {
+//            // Default role
+//            Role userRole = roleRepository.findByRoleName("USER")
+//                    .orElseThrow(() -> new RuntimeException("Error: Role USER not found."));
+//            roles.add(userRole);
+//        } else {
+//            registerRequest.roles().forEach(role -> {
+//                Role foundRole = roleRepository.findByRoleName(role)
+//                        .orElseThrow(() -> new RuntimeException("Error: Role " + role + " not found."));
+//                roles.add(foundRole);
+//            });
+//        }
+//        user.setRoles(roles);
+//
+//        userRepository.save(user);
+//
+//        return ResponseEntity.ok("User registered successfully");
+//    }
+//
+//    @PostMapping("/init-roles")
+//    public ResponseEntity<?> initRoles() {
+//        try {
+//            // Create default roles if they don't exist
+//            String[] defaultRoles = {"USER", "ADMIN", "MODERATOR"};
+//            for (String roleName : defaultRoles) {
+//                if (!roleRepository.existsById(roleName)) {
+//                    Role role = new Role();
+//                    role.setRoleName(roleName);
+//                    role.setRoleDescription(roleName + " Role");
+//                    roleRepository.save(role);
+//                }
+//            }
+//            return ResponseEntity.ok("Roles initialized successfully");
+//        } catch (Exception e) {
+//            return ResponseEntity.badRequest().body("Error initializing roles: " + e.getMessage());
+//        }
+//    }
+//}
+-----------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.restController;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.*;
+import java.util.stream.Collectors;
+@RestController
+@RequestMapping("/api/debug")
+@CrossOrigin(origins = "*", maxAge = 3600)
+public class DebugController {
+
+    @GetMapping("/my-roles")
+    @PreAuthorize("isAuthenticated()")
+    public Map<String, Object> getMyRoles() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        Map<String, Object> debugInfo = new HashMap<>();
+        debugInfo.put("username", auth.getName());
+        debugInfo.put("authorities", auth.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toList()));
+        debugInfo.put("authenticated", auth.isAuthenticated());
+
+        return debugInfo;
+    }
+}
+
+
+----------------------------------------------------
+package com.abc.SpringBootSecqurityEx.restController;
+import com.abc.SpringBootSecqurityEx.dtos.secqurity.StatusUpdateRequest;
+import com.abc.SpringBootSecqurityEx.dtos.secqurity.UserUpdateRequest;
+import com.abc.SpringBootSecqurityEx.entity.User;
+import com.abc.SpringBootSecqurityEx.repository.UserRepository;
+import com.abc.SpringBootSecqurityEx.service.UserService;
+import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Optional;
+
+@RestController
+@RequestMapping("/api/users")
+@CrossOrigin(origins = "*", maxAge = 3600)
+public class UserController {
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private UserService userService;
+
+
+    @PostConstruct
+    public void initRoleAndUser() {
+        userService.initRoleAndUser();
+    }
+
+    // GET ALL USERS - Only accessible by ADMIN
+    @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<User>> getAllUsers() {
+        List<User> users = userRepository.findAll();
+        return ResponseEntity.ok(users);
+    }
+
+    // GET USER BY USERNAME - Accessible by ADMIN or the user themselves
+    @GetMapping("/{username}")
+    @PreAuthorize("hasRole('ADMIN') or #username == authentication.principal.username")
+    public ResponseEntity<User> getUserByUsername(@PathVariable String username) {
+        Optional<User> user = userRepository.findByUserName(username);
+        return user.map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    // UPDATE USER - Accessible by ADMIN or the user themselves
+    @PutMapping("/{username}")
+    @PreAuthorize("hasRole('ADMIN') or #username == authentication.principal.username")
+    public ResponseEntity<User> updateUser(
+            @PathVariable String username,
+            @RequestBody UserUpdateRequest updateRequest) {
+
+        Optional<User> existingUser = userRepository.findByUserName(username);
+        if (existingUser.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        User user = existingUser.get();
+
+        // Only allow updating specific fields
+        if (updateRequest.firstName() != null) {
+            user.setUserFirstName(updateRequest.firstName());
+        }
+        if (updateRequest.lastName() != null) {
+            user.setUserLastName(updateRequest.lastName());
+        }
+        if (updateRequest.email() != null) {
+            user.setEmail(updateRequest.email());
+        }
+
+        User updatedUser = userRepository.save(user);
+        return ResponseEntity.ok(updatedUser);
+    }
+
+    // DELETE USER - Only accessible by ADMIN
+    @DeleteMapping("/{username}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> deleteUser(@PathVariable String username) {
+        if (!userRepository.existsById(username)) {
+            return ResponseEntity.notFound().build();
+        }
+        userRepository.deleteById(username);
+        return ResponseEntity.ok("User deleted successfully");
+    }
+
+    // ENABLE/DISABLE USER - Only accessible by ADMIN
+    @PatchMapping("/{username}/status")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<User> updateUserStatus(
+            @PathVariable String username,
+            @RequestBody StatusUpdateRequest statusRequest) {
+
+        Optional<User> existingUser = userRepository.findByUserName(username);
+        if (existingUser.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        User user = existingUser.get();
+        user.setEnabled(statusRequest.enabled());
+
+        User updatedUser = userRepository.save(user);
+        return ResponseEntity.ok(updatedUser);
+    }
+}
+
+-------------------------------------------------------
+secqurity(folder nam)
+-----------------------------------------------------
+package com.abc.SpringBootSecqurityEx.secqurity;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.MediaType;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+
+@Component
+public class AuthEntryPointJwt implements AuthenticationEntryPoint {
+
+    private static final Logger logger = LoggerFactory.getLogger(AuthEntryPointJwt.class);
+
+    @Override
+    public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException)
+            throws IOException, ServletException {
+        logger.error("Unauthorized error: {}", authException.getMessage());
+
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+
+        final Map<String, Object> body = new HashMap<>();
+        body.put("status", HttpServletResponse.SC_UNAUTHORIZED);
+        body.put("timestamp", new Date());
+        body.put("error", "Unauthorized");
+        body.put("message", getCustomMessage(authException, request));
+        body.put("path", request.getServletPath());
+        body.put("method", request.getMethod());
+
+
+        final ObjectMapper mapper = new ObjectMapper();
+        mapper.writeValue(response.getOutputStream(), body);
+    }
+
+
+    private String getCustomMessage(AuthenticationException authException, HttpServletRequest request) {
+        String message = authException.getMessage();
+
+        // Check for specific JWT-related issues
+        if (message.contains("JWT") || message.contains("token")) {
+            String authHeader = request.getHeader("Authorization");
+            if (authHeader == null) {
+                return "Missing Authorization header";
+            } else if (!authHeader.startsWith("Bearer ")) {
+                return "Invalid Authorization header format. Expected 'Bearer <token>'";
+            } else {
+                return "Invalid or expired JWT token";
+            }
+        }
+
+        return "Authentication failed: " + message;
+    }
+}
+
+
+----------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.secqurity;
+
+
+import com.abc.SpringBootSecqurityEx.entity.User;
+import com.abc.SpringBootSecqurityEx.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Collection;
+import java.util.stream.Collectors;
+
+@Service
+@Transactional
+public class CustomUserDetailsService implements UserDetailsService {
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        User myUser = userRepository.findByUserName(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+
+        return new org.springframework.security.core.userdetails.User(
+                myUser.getUserName(),
+                myUser.getPassword(),
+                myUser.getEnabled(),
+                myUser.getAccountNonExpired(),
+                myUser.getCredentialsNonExpired(),
+                myUser.getAccountNonLocked(),
+                getAuthorities(myUser)
+        );
+    }
+
+    private Collection<? extends GrantedAuthority> getAuthorities(User user) {
+        return user.getRoles().stream()
+                .map(role -> new SimpleGrantedAuthority( role.getRoleName()))
+                .collect(Collectors.toList());
+    }
+}
+
+-----------------------------------------------------
+package com.abc.SpringBootSecqurityEx.secqurity;
+
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+
+@Component
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    @Autowired
+    private JwtUtil jwtUtil;
+
+    @Autowired
+    private CustomUserDetailsService userDetailsService;
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain) throws ServletException, IOException {
+
+        final String authHeader = request.getHeader("Authorization");
+        String username = null;
+        String jwt = null;
+
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            jwt = authHeader.substring(7);
+            username = jwtUtil.extractUsername(jwt);
+        }
+
+        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+
+            if (jwtUtil.validateToken(jwt)) {
+                UsernamePasswordAuthenticationToken authToken =
+                        new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authToken);
+            }
+        }
+
+        filterChain.doFilter(request, response);
+    }
+}
+
+-------------------------------------------------------
+//
+// Source code recreated from a .class file by IntelliJ IDEA
+// (powered by FernFlower decompiler)
+//
+
+package io.jsonwebtoken;
+
+import io.jsonwebtoken.io.Encoder;
+import io.jsonwebtoken.io.Serializer;
+import io.jsonwebtoken.security.InvalidKeyException;
+import java.security.Key;
+import java.util.Date;
+import java.util.Map;
+
+public interface JwtBuilder extends ClaimsMutator<JwtBuilder> {
+    JwtBuilder setHeader(Header var1);
+
+    JwtBuilder setHeader(Map<String, Object> var1);
+
+    JwtBuilder setHeaderParams(Map<String, Object> var1);
+
+    JwtBuilder setHeaderParam(String var1, Object var2);
+
+    JwtBuilder setPayload(String var1);
+
+    JwtBuilder setClaims(Claims var1);
+
+    JwtBuilder setClaims(Map<String, ?> var1);
+
+    JwtBuilder addClaims(Map<String, Object> var1);
+
+    JwtBuilder setIssuer(String var1);
+
+    JwtBuilder setSubject(String var1);
+
+    JwtBuilder setAudience(String var1);
+
+    JwtBuilder setExpiration(Date var1);
+
+    JwtBuilder setNotBefore(Date var1);
+
+    JwtBuilder setIssuedAt(Date var1);
+
+    JwtBuilder setId(String var1);
+
+    JwtBuilder claim(String var1, Object var2);
+
+    JwtBuilder signWith(Key var1) throws InvalidKeyException;
+
+    /** @deprecated */
+    @Deprecated
+    JwtBuilder signWith(SignatureAlgorithm var1, byte[] var2) throws InvalidKeyException;
+
+    /** @deprecated */
+    @Deprecated
+    JwtBuilder signWith(SignatureAlgorithm var1, String var2) throws InvalidKeyException;
+
+    /** @deprecated */
+    @Deprecated
+    JwtBuilder signWith(SignatureAlgorithm var1, Key var2) throws InvalidKeyException;
+
+    JwtBuilder signWith(Key var1, SignatureAlgorithm var2) throws InvalidKeyException;
+
+    JwtBuilder compressWith(CompressionCodec var1);
+
+    JwtBuilder base64UrlEncodeWith(Encoder<byte[], String> var1);
+
+    JwtBuilder serializeToJsonWith(Serializer<Map<String, ?>> var1);
+
+    String compact();
+}
+
+
+--------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.secqurity;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
+
+@Configuration
+@EnableMethodSecurity(prePostEnabled = true)  // This enables @PreAuthorize
+public class SecurityConfig {
+
+    @Autowired
+    private JwtAuthenticationFilter jwtAuthFilter;
+
+    @Autowired
+    private CustomUserDetailsService userDetailsService;
+
+    @Autowired
+    private AuthEntryPointJwt unauthorizedHandler;
+
+    @Autowired
+    private SimpleAccessDeniedHandler accessDeniedHandler;
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+                .csrf(csrf -> csrf.disable())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .authorizeHttpRequests(authz -> authz
+                                .requestMatchers("/**").permitAll()
+                                .requestMatchers("/uploads/**").permitAll()
+                                .requestMatchers("/api/auth/**").permitAll()
+                                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                                .requestMatchers("/api/user/**").hasAnyRole("USER", "ADMIN")
+                                .requestMatchers("/swagger-ui/**").permitAll()
+                                .requestMatchers("/v3/api-docs/**").permitAll()
+                                .anyRequest().authenticated()
+                )
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(unauthorizedHandler)   // Handle authentication errors
+                        .accessDeniedHandler(accessDeniedHandler)        // Handle authorization errors
+                )
+                .authenticationProvider(authenticationProvider())
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+
+
+//               .requestMatchers("/api/admin/**").hasAuthority("ROLE_ADMIN")
+//                .requestMatchers("/api/user/**").hasAnyAuthority("ROLE_USER", "ROLE_ADMIN")
+        return http.build();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public AuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+        authProvider.setUserDetailsService(userDetailsService);
+        authProvider.setPasswordEncoder(passwordEncoder());
+        return authProvider;
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOriginPatterns(List.of("*"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
+}
+
+-----------------------------------------------------
+package com.abc.SpringBootSecqurityEx.secqurity;
+
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+public class SimpleAccessDeniedHandler  implements AccessDeniedHandler {
+
+    @Override
+    public void handle(HttpServletRequest request,
+                       HttpServletResponse response,
+                       AccessDeniedException accessDeniedException) throws IOException, ServletException {
+
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+
+        final Map<String, Object> body = new HashMap<>();
+        body.put("status", HttpServletResponse.SC_FORBIDDEN);
+        body.put("error", "Forbidden");
+        body.put("message", "Access denied: " + accessDeniedException.getMessage());
+        body.put("path", request.getServletPath());
+
+        final ObjectMapper mapper = new ObjectMapper();
+        mapper.writeValue(response.getOutputStream(), body);
+    }
+}
+
+--------------------------------------------
+service(folder name)
+-------------------------------------------
+package com.abc.SpringBootSecqurityEx.service;
+
+import com.abc.SpringBootSecqurityEx.entity.Address;
+import com.abc.SpringBootSecqurityEx.entity.User;
+import com.abc.SpringBootSecqurityEx.repository.AddressRepository;
+import com.abc.SpringBootSecqurityEx.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class AddressService {
+
+    private final AddressRepository addressRepository;
+    private final UserRepository userRepository;
+
+    private User getCurrentUser() {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findById(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+    }
+
+    // ইউজারের সব অ্যাড্রেস দেখা
+    public List<Address> getUserAddresses() {
+        User user = getCurrentUser();
+        return addressRepository.findByUser(user);
+    }
+
+    // নতুন অ্যাড্রেস অ্যাড করা
+    public Address addAddress(Address address) {
+        User user = getCurrentUser();
+        address.setUser(user);
+        return addressRepository.save(address);
+    }
+}
+
+-------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.service;
+
+import com.abc.SpringBootSecqurityEx.dtos.secqurity.JwtResponse;
+import com.abc.SpringBootSecqurityEx.dtos.secqurity.LoginRequest;
+import com.abc.SpringBootSecqurityEx.dtos.secqurity.RegisterRequest;
+import com.abc.SpringBootSecqurityEx.entity.Role;
+import com.abc.SpringBootSecqurityEx.entity.User;
+import com.abc.SpringBootSecqurityEx.repository.RoleRepository;
+import com.abc.SpringBootSecqurityEx.repository.UserRepository;
+import com.abc.SpringBootSecqurityEx.secqurity.JwtUtil;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.HashSet;
+import java.util.Set;
+
+@Service
+@Transactional
+public class AuthService {
+
+    @Autowired
+    private AuthenticationManager authenticationManager;
+
+    @Autowired
+    private JwtUtil jwtUtil;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private RoleRepository roleRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    public JwtResponse login(LoginRequest loginRequest) {
+        Authentication authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(
+                        loginRequest.username(),
+                        loginRequest.password()
+                )
+        );
+
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+//        String jwt = jwtUtil.generateToken(loginRequest.username());
+
+        User user = userRepository.findByUserName(loginRequest.username())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        String jwt = jwtUtil.generateTokenFromUsername(user);
+
+//        Collection<String> roles = authentication.getAuthorities().stream()
+//                .map(GrantedAuthority::getAuthority)
+//                .collect(Collectors.toList());
+
+        return new JwtResponse(
+                jwt,
+                user
+        );
+    }
+
+    public String register(RegisterRequest registerRequest) {
+        validateRegistration(registerRequest);
+
+        User user = createUserFromRequest(registerRequest);
+        setUserRoles(user, null);
+
+        userRepository.save(user);
+        return "User registered successfully";
+    }
+
+    public String initializeRoles() {
+        String[] defaultRoles = {"USER", "ADMIN", "MODERATOR"};
+        for (String roleName : defaultRoles) {
+            if (!roleRepository.existsById(roleName)) {
+                Role role = new Role();
+                role.setRoleName(roleName);
+                role.setRoleDescription(roleName + " Role");
+                roleRepository.save(role);
+            }
+        }
+        return "Roles initialized successfully";
+    }
+
+    private void validateRegistration(RegisterRequest registerRequest) {
+        if (userRepository.existsByUserName(registerRequest.username())) {
+            throw new IllegalArgumentException("Username already exists");
+        }
+
+        if (userRepository.existsByEmail(registerRequest.email())) {
+            throw new IllegalArgumentException("Email already exists");
+        }
+    }
+
+    private User createUserFromRequest(RegisterRequest registerRequest) {
+        User user = new User();
+        user.setUserName(registerRequest.username());
+        user.setPassword(passwordEncoder.encode(registerRequest.password()));
+        user.setEmail(registerRequest.email());
+        user.setUserFirstName(registerRequest.firstName());
+        user.setUserLastName(registerRequest.lastName());
+
+        // Set default values
+        user.setEnabled(true);
+        user.setAccountNonExpired(true);
+        user.setCredentialsNonExpired(true);
+        user.setAccountNonLocked(true);
+
+        return user;
+    }
+
+    private void setUserRoles(User user, Set<String> roleNames) {
+        Set<Role> roles = new HashSet<>();
+
+        if (roleNames == null || roleNames.isEmpty()) {
+            // Default role
+            Role userRole = roleRepository.findByRoleName("ROLE_USER")
+                    .orElseThrow(() -> new RuntimeException("Error: Role USER not found."));
+            roles.add(userRole);
+        } else {
+            roleNames.forEach(roleName -> {
+                Role foundRole = roleRepository.findByRoleName(roleName)
+                        .orElseThrow(() -> new RuntimeException("Error: Role " + roleName + " not found."));
+                roles.add(foundRole);
+            });
+        }
+
+        user.setRoles(roles);
+    }
+}
+
+-----------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.service;
+
+import com.abc.SpringBootSecqurityEx.dtos.BrandDTO;
+import com.abc.SpringBootSecqurityEx.entity.Brand;
+import com.abc.SpringBootSecqurityEx.repository.BrandRepository;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class BrandService {
+
+    private final BrandRepository brandRepository;
+    private final FileUploadService fileUploadService;
+
+    /* ===================== CREATE ===================== */
+    public BrandDTO create(BrandDTO dto, MultipartFile logo) {
+
+        Brand brand = new Brand();
+        brand.setName(dto.getName());
+        brand.setDescription(dto.getDescription());
+
+        if (logo != null && !logo.isEmpty()) {
+            brand.setLogoUrl(fileUploadService.upload(logo));
+        }
+
+        brandRepository.save(brand);
+
+        return new BrandDTO(
+                brand.getId(),
+                brand.getName(),
+                brand.getDescription(),
+                brand.getLogoUrl()
+        );
+    }
+
+    /* ===================== READ ALL ===================== */
+    public List<BrandDTO> getAll() {
+        return brandRepository.findAll()
+                .stream()
+                .map(b -> new BrandDTO(b.getId(), b.getName(),b.getDescription(), b.getLogoUrl()))
+                .toList();
+    }
+
+    /* ===================== READ BY ID ===================== */
+    public BrandDTO getById(Long id) {
+
+        Brand brand = brandRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Brand not found with id: " + id));
+
+        return new BrandDTO(
+                brand.getId(),
+                brand.getName(),
+                brand.getDescription(),
+                brand.getLogoUrl()
+        );
+    }
+
+    /* ===================== UPDATE ===================== */
+    public BrandDTO update(Long id, BrandDTO dto, MultipartFile logo) {
+
+        Brand brand = brandRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Brand not found with id: " + id));
+
+        brand.setName(dto.getName());
+
+        if (logo != null && !logo.isEmpty()) {
+            brand.setLogoUrl(fileUploadService.upload(logo));
+        }
+
+        brandRepository.save(brand);
+
+        return new BrandDTO(
+                brand.getId(),
+                brand.getName(),
+                brand.getDescription(),
+                brand.getLogoUrl()
+        );
+    }
+
+    /* ===================== DELETE ===================== */
+    public void delete(Long id) {
+
+        Brand brand = brandRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Brand not found with id: " + id));
+
+        brandRepository.delete(brand);
+    }
+}
+
+
+-----------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.service;
+
+import com.abc.SpringBootSecqurityEx.dtos.CartDto;
+import com.abc.SpringBootSecqurityEx.dtos.CartItemRequest;
+import com.abc.SpringBootSecqurityEx.dtos.ItemDto;
+import com.abc.SpringBootSecqurityEx.entity.Cart;
+import com.abc.SpringBootSecqurityEx.entity.CartItem;
+import com.abc.SpringBootSecqurityEx.entity.Product;
+import com.abc.SpringBootSecqurityEx.entity.User;
+import com.abc.SpringBootSecqurityEx.repository.CartRepository;
+import com.abc.SpringBootSecqurityEx.repository.ProductRepository;
+import com.abc.SpringBootSecqurityEx.repository.UserRepository;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class CartService {
+
+    private final CartRepository cartRepository;
+    private final ProductRepository productRepository;
+    private final UserRepository userRepository;
+
+    // Get the current logged-in user using SecurityContextHolder
+    private User getCurrentUser() {
+        // Extract the username from SecurityContext
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findById(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+    }
+
+    // Get the cart of the logged-in user
+    public CartDto getCart() {
+        User currentUser = getCurrentUser();
+        Cart cart = cartRepository.findByUser(currentUser)
+                .orElseGet(() -> createNewCartForUser(currentUser)); // Create a new cart if none exists
+        cart.calculateTotalAmount(); // Calculate the total amount for the cart
+        return mapCartToDto(cart); // Return the updated cart DTO
+    }
+
+    // Add an item to the cart of the current user
+    public CartDto addItemToCart(CartItemRequest request) {
+        User currentUser = getCurrentUser();
+        Cart cart = cartRepository.findByUser(currentUser)
+                .orElseGet(() -> createNewCartForUser(currentUser));
+
+        Product product = productRepository.findById(request.getProductId())
+                .orElseThrow(() -> new RuntimeException("Product not found"));
+
+        Optional<CartItem> existingItem = cart.getItems().stream()
+                .filter(item -> item.getProduct().getId().equals(product.getId()))
+                .findFirst();
+
+        CartItem cartItem;
+
+        if (existingItem.isEmpty()) {
+            // Add a new item if it's not already in the cart
+            cartItem = new CartItem();
+            cartItem.setProduct(product);
+            cartItem.setQuantity(request.getQuantity());
+            cartItem.setCart(cart);
+            cart.getItems().add(cartItem);
+        } else {
+            // Update quantity if the product is already in the cart
+            cartItem = existingItem.get();
+            cartItem.setQuantity(cartItem.getQuantity() + request.getQuantity());
+        }
+
+        cart.calculateTotalAmount(); // Recalculate the total amount
+        cartRepository.save(cart); // Save the cart with the updated items
+        return mapCartToDto(cart);
+    }
+
+    // Update a cart item
+    public CartDto updateCartItem(Long cartItemId, CartItemRequest request) {
+        User currentUser = getCurrentUser();
+        Cart cart = cartRepository.findByUser(currentUser)
+                .orElseThrow(() -> new RuntimeException("Cart not found"));
+
+        CartItem cartItem = cart.getItems().stream()
+                .filter(item -> item.getId().equals(cartItemId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Cart item not found"));
+
+        cartItem.setQuantity(request.getQuantity()); // Update quantity of the cart item
+        cart.calculateTotalAmount(); // Recalculate total amount after update
+        cartRepository.save(cart); // Save the updated cart
+        return mapCartToDto(cart); // Return the updated cart DTO
+    }
+
+    // Remove a cart item
+    public void removeCartItem(Long cartItemId) {
+        User currentUser = getCurrentUser();
+        Cart cart = cartRepository.findByUser(currentUser)
+                .orElseThrow(() -> new RuntimeException("Cart not found"));
+
+        CartItem cartItem = cart.getItems().stream()
+                .filter(item -> item.getId().equals(cartItemId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Cart item not found"));
+
+        cartItem.setCart(null);
+        cart.getItems().remove(cartItem); // Remove the cart item
+        cart.calculateTotalAmount(); // Recalculate total amount after removal
+        cartRepository.save(cart); // Save the updated cart
+    }
+
+    // Helper method to create a new cart for a user
+    private Cart createNewCartForUser(User user) {
+        Cart cart = new Cart();
+        cart.setUser(user);
+        return cartRepository.save(cart);
+    }
+
+    private CartDto mapCartToDto(Cart cart) {
+        CartDto cartDto = new CartDto();
+        cartDto.setCartId(cart.getId());
+        cartDto.setTotalAmount(cart.getTotalAmount());
+
+        // Map cart items to ItemDto
+        cartDto.setItems(cart.getItems().stream()
+                .map(item -> {
+                    ItemDto itemDto = new ItemDto();
+                    itemDto.setItemId(item.getId());
+                    itemDto.setProductId(item.getProduct().getId());
+                    try {
+                        itemDto.setImageUrl(item.getProduct().getImages().get(0).getImageUrl());
+                    } catch (Exception e) {
+                        System.out.println("No image found!!");
+                    }
+                    itemDto.setProductName(item.getProduct().getName());
+                    itemDto.setQuantity(item.getQuantity());
+                    itemDto.setPrice(item.getProduct().getPrice());
+                    itemDto.setTotal(item.getTotalPrice()); // Calculate total price for this cart item
+                    return itemDto;
+                })
+                .collect(Collectors.toList()));
+
+        return cartDto;
+    }
+
+    public Cart getCartEntity() {
+        User currentUser = getCurrentUser();
+        return cartRepository.findByUser(currentUser)
+                .orElseThrow(() -> new RuntimeException("Cart not found"));
+    }
+}
+
+
+-------------------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.service;
+
+import com.abc.SpringBootSecqurityEx.dtos.CategoryDTO;
+import com.abc.SpringBootSecqurityEx.entity.Category;
+import com.abc.SpringBootSecqurityEx.repository.CategoryRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class CategoryService {
+
+    private final CategoryRepository categoryRepository;
+    private final FileUploadService fileUploadService;
+
+    /* ================= CREATE ================= */
+    public CategoryDTO create(CategoryDTO dto, MultipartFile image) {
+
+        Category category = new Category();
+        mapDtoToEntity(dto, category);
+
+        if (image != null && !image.isEmpty()) {
+            category.setImageUrl(fileUploadService.upload(image));
+        }
+
+        return mapEntityToDto(categoryRepository.save(category));
+    }
+
+    /* ================= UPDATE ================= */
+    public CategoryDTO update(Long id, CategoryDTO dto, MultipartFile image) {
+
+        Category category = categoryRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Category not found"));
+
+        mapDtoToEntity(dto, category);
+
+        if (image != null && !image.isEmpty()) {
+            category.setImageUrl(fileUploadService.upload(image));
+        }
+
+        return mapEntityToDto(categoryRepository.save(category));
+    }
+
+    /* ================= GET ALL ================= */
+    public List<CategoryDTO> getAll() {
+        return categoryRepository.findAll()
+                .stream()
+                .map(this::mapEntityToDto)
+                .collect(Collectors.toList());
+    }
+
+    /* ================= GET BY ID ================= */
+    public CategoryDTO getById(Long id) {
+        return categoryRepository.findById(id)
+                .map(this::mapEntityToDto)
+                .orElseThrow(() -> new RuntimeException("Category not found"));
+    }
+
+    /* ================= DELETE ================= */
+    public void delete(Long id) {
+        categoryRepository.deleteById(id);
+    }
+
+    /* ================= MAPPERS ================= */
+    private void mapDtoToEntity(CategoryDTO dto, Category entity) {
+        entity.setName(dto.getName());
+
+        if (dto.getParentId() != null) {
+            Category parent = categoryRepository.findById(dto.getParentId())
+                    .orElseThrow(() -> new RuntimeException("Parent category not found"));
+            entity.setParent(parent);
+        } else {
+            entity.setParent(null);
+        }
+    }
+
+    private CategoryDTO mapEntityToDto(Category entity) {
+        return new CategoryDTO(
+                entity.getId(),
+                entity.getName(),
+                entity.getImageUrl(),
+                entity.getParent() != null ? entity.getParent().getId() : null
+        );
+    }
+}
+
+
+----------------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.service;
+
+import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.UUID;
+
+@Service
+public class FileUploadService {
+
+    @Value("${file.upload-dir}")
+    private String uploadDir;
+
+    private Path uploadPath;
+
+    @PostConstruct
+    public void init() {
+        try {
+            uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
+            Files.createDirectories(uploadPath); // ✅ create if not exists
+        } catch (IOException e) {
+            throw new RuntimeException("Could not create upload directory", e);
+        }
+    }
+
+    public String upload(MultipartFile file) {
+        try {
+            String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
+            Path targetLocation = uploadPath.resolve(fileName);
+
+            Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
+
+            return "/uploads/" + fileName;
+
+        } catch (IOException e) {
+            throw new RuntimeException("File upload failed", e);
+        }
+    }
+}
+
+
+--------------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.service;
+
+
+import com.abc.SpringBootSecqurityEx.entity.Inventory;
+import com.abc.SpringBootSecqurityEx.entity.Product;
+import com.abc.SpringBootSecqurityEx.repository.InventoryRepository;
+import com.abc.SpringBootSecqurityEx.repository.ProductRepository;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class InventoryService {
+
+    private final InventoryRepository inventoryRepository;
+    private final ProductRepository productRepository;
+
+    public void updateStock(Long productId, Integer quantity) {
+
+        Inventory inventory = inventoryRepository.findByProductId(productId)
+                .orElseGet(() -> {
+                    Inventory inv = new Inventory();
+                    Product product = productRepository.findById(productId)
+                            .orElseThrow(() -> new RuntimeException("Product not found"));
+                    inv.setProduct(product);
+                    return inv;
+                });
+
+        inventory.setAvailableQuantity(quantity);
+        inventoryRepository.save(inventory);
+    }
+}
+
+
+------------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.service;
+
+import com.abc.SpringBootSecqurityEx.dtos.CheckoutRequest;
+import com.abc.SpringBootSecqurityEx.dtos.ItemDto;
+import com.abc.SpringBootSecqurityEx.dtos.OrderDto;
+import com.abc.SpringBootSecqurityEx.entity.*;
+import com.abc.SpringBootSecqurityEx.enums.OrderStatus;
+import com.abc.SpringBootSecqurityEx.repository.CartRepository;
+import com.abc.SpringBootSecqurityEx.repository.OrderRepository;
+import com.abc.SpringBootSecqurityEx.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import jakarta.transaction.Transactional;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class OrderService {
+
+    private final OrderRepository orderRepository;
+    private final UserRepository userRepository;
+    private final CartRepository cartRepository;
+
+    private User getCurrentUser() {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findById(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+    }
+
+    // নতুন: CheckoutRequest দিয়ে অ্যাড্রেস গ্রহণ করা
+    public OrderDto createOrder(CheckoutRequest request) {
+        User user = getCurrentUser();
+        Cart cart = cartRepository.findByUser(user)
+                .orElseThrow(() -> new RuntimeException("Cart not found"));
+
+        if (cart.getItems().isEmpty()) {
+            throw new RuntimeException("Cart is empty");
+        }
+
+        Order order = new Order();
+        order.setUser(user);
+        order.setStatus(OrderStatus.PENDING);
+        order.setPaymentMethod(request.getPaymentMethod());
+
+        // Cart items → Order items
+        order.setItems(cart.getItems().stream().map(cartItem -> {
+            OrderItem orderItem = new OrderItem();
+            orderItem.setOrder(order);
+            orderItem.setProduct(cartItem.getProduct());
+            orderItem.setQuantity(cartItem.getQuantity());
+            return orderItem;
+        }).collect(Collectors.toList()));
+
+        // Total amount calculate
+        BigDecimal totalAmount = order.getItems().stream()
+                .map(OrderItem::getTotalPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        order.setTotalAmount(totalAmount);
+
+        // নতুন: ইউজার যে অ্যাড্রেস ফর্মে লিখেছে সেটা Order-এ সেভ করো
+        Address shippingAddress = new Address();
+        shippingAddress.setStreet(request.getStreet());
+        shippingAddress.setCity(request.getCity());
+        shippingAddress.setCountry(request.getCountry());
+        shippingAddress.setZipCode(request.getZipCode());
+        shippingAddress.setUser(user);  // ইউজারের সাথে লিঙ্ক
+
+        order.setShippingAddress(shippingAddress);
+
+        orderRepository.save(order);
+
+        // কার্ট ক্লিয়ার
+        cart.getItems().clear();
+        cartRepository.save(cart);
+
+        return mapOrderToDto(order);
+    }
+
+    // বাকি মেথডগুলো আগের মতোই থাকবে (getUserOrders, getOrder, getAllOrders, updateOrderStatus)
+
+    public List<OrderDto> getUserOrders() {
+        User user = getCurrentUser();
+        return orderRepository.findByUser(user).stream()
+                .map(this::mapOrderToDto)
+                .collect(Collectors.toList());
+    }
+
+    public OrderDto getOrder(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+        return mapOrderToDto(order);
+    }
+
+    public List<OrderDto> getAllOrders() {
+        return orderRepository.findAll().stream()
+                .map(this::mapOrderToDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public OrderDto updateOrderStatus(Long orderId, OrderStatus newStatus) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+        order.setStatus(newStatus);
+        orderRepository.save(order);
+        return mapOrderToDto(order);
+    }
+
+    private OrderDto mapOrderToDto(Order order) {
+        OrderDto dto = new OrderDto();
+        dto.setOrderId(order.getId());
+        dto.setTotalAmount(order.getTotalAmount());
+        dto.setStatus(order.getStatus());
+        dto.setPaymentMethod(order.getPaymentMethod());
+        dto.setCreatedAt(order.getCreatedAt());
+        dto.setUserName(order.getUser() != null ? order.getUser().getUserName() : "Unknown");
+
+        // শিপিং অ্যাড্রেস ইনফো
+        if (order.getShippingAddress() != null) {
+            Address addr = order.getShippingAddress();
+            dto.setShippingAddressInfo(
+                    addr.getStreet() + ", " +
+                            addr.getCity() + ", " +
+                            addr.getCountry() + " - " +
+                            addr.getZipCode()
+            );
+        } else {
+            dto.setShippingAddressInfo("No shipping address");
+        }
+
+        dto.setItems(order.getItems().stream().map(orderItem -> {
+            ItemDto itemDto = new ItemDto();
+            itemDto.setItemId(orderItem.getId());
+            itemDto.setProductId(orderItem.getProduct().getId());
+            itemDto.setProductName(orderItem.getProduct().getName());
+            itemDto.setQuantity(orderItem.getQuantity());
+            itemDto.setPrice(orderItem.getProduct().getPrice());
+            itemDto.setTotal(orderItem.getTotalPrice());
+
+            try {
+                itemDto.setImageUrl(orderItem.getProduct().getImages().get(0).getImageUrl());
+            } catch (Exception e) {
+                itemDto.setImageUrl(null);
+            }
+            return itemDto;
+        }).collect(Collectors.toList()));
+
+        return dto;
+    }
+}
+
+----------------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.service;
+
+import com.abc.SpringBootSecqurityEx.dtos.ProductReviewDTO;
+import com.abc.SpringBootSecqurityEx.entity.Product;
+import com.abc.SpringBootSecqurityEx.entity.ProductReview;
+import com.abc.SpringBootSecqurityEx.entity.User;
+import com.abc.SpringBootSecqurityEx.repository.ProductRepository;
+import com.abc.SpringBootSecqurityEx.repository.ProductReviewRepository;
+import com.abc.SpringBootSecqurityEx.repository.UserRepository;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+
+
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class ProductReviewService {
+
+    private final ProductRepository productRepository;
+    private final ProductReviewRepository reviewRepository;
+    private final UserRepository userRepository;
+
+    public void add(ProductReviewDTO dto) {
+
+        Product product = productRepository.findById(dto.getProductId())
+                .orElseThrow(() -> new RuntimeException("Product not found"));
+
+        User user = userRepository.findById(dto.getUserId())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        ProductReview review = new ProductReview();
+        review.setRating(dto.getRating());
+        review.setComment(dto.getComment());
+        review.setProduct(product);
+        review.setUser(user);
+        review.setCreatedAt(LocalDateTime.now());
+
+        reviewRepository.save(review);
+    }
+}
+
+
+---------------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.service;
+
+import com.abc.SpringBootSecqurityEx.dtos.ProductRequestDTO;
+import com.abc.SpringBootSecqurityEx.dtos.ProductResponseDTO;
+import com.abc.SpringBootSecqurityEx.entity.Brand;
+import com.abc.SpringBootSecqurityEx.entity.Category;
+import com.abc.SpringBootSecqurityEx.entity.Product;
+import com.abc.SpringBootSecqurityEx.entity.ProductImage;
+import com.abc.SpringBootSecqurityEx.repository.BrandRepository;
+import com.abc.SpringBootSecqurityEx.repository.CategoryRepository;
+import com.abc.SpringBootSecqurityEx.repository.ProductImageRepository;
+import com.abc.SpringBootSecqurityEx.repository.ProductRepository;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class ProductService {
+
+    private final ProductRepository productRepository;
+    private final BrandRepository brandRepository;
+    private final CategoryRepository categoryRepository;
+    private final ProductImageRepository productImageRepository;
+    private final FileUploadService fileUploadService;
+
+    /* ================= CREATE ================= */
+    public ProductResponseDTO create(ProductRequestDTO dto, List<MultipartFile> images) {
+
+        Product product = new Product();
+        mapDtoToEntity(dto, product);
+
+        Product savedProduct = productRepository.save(product);
+
+        saveImages(savedProduct, images);
+
+        return mapEntityToDto(savedProduct);
+    }
+
+    /* ================= UPDATE ================= */
+    public ProductResponseDTO update(Long id, ProductRequestDTO dto, List<MultipartFile> images) {
+
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Product not found"));
+
+        mapDtoToEntity(dto, product);
+
+        if (images != null && !images.isEmpty()) {
+            product.getImages().clear();
+            saveImages(product, images);
+        }
+
+        return mapEntityToDto(productRepository.save(product));
+    }
+
+    /* ================= GET ALL ================= */
+    public List<ProductResponseDTO> getAll() {
+        return productRepository.findAll()
+                .stream()
+                .map(this::mapEntityToDto)
+                .toList();
+    }
+
+    /* ================= GET BY ID ================= */
+    public ProductResponseDTO getById(Long id) {
+        return productRepository.findById(id)
+                .map(this::mapEntityToDto)
+                .orElseThrow(() -> new RuntimeException("Product not found"));
+    }
+
+    /* ================= DELETE ================= */
+    public void delete(Long id) {
+        productRepository.deleteById(id);
+    }
+
+    /* ================= IMAGE HANDLING ================= */
+    private void saveImages(Product product, List<MultipartFile> images) {
+        if (images == null) return;
+
+        for (int i = 0; i < images.size(); i++) {
+            MultipartFile file = images.get(i);
+            String imageUrl = fileUploadService.upload(file);
+
+            ProductImage image = new ProductImage();
+            image.setImageUrl(imageUrl);
+            image.setPrimaryImage(i == 0);
+            image.setProduct(product);
+
+            productImageRepository.save(image);
+        }
+    }
+
+    /* ================= MAPPING ================= */
+    private void mapDtoToEntity(ProductRequestDTO dto, Product product) {
+
+        product.setName(dto.getName());
+        product.setDescription(dto.getDescription());
+        product.setPrice(dto.getPrice());
+        product.setDiscountPrice(dto.getDiscountPrice());
+        product.setSku(dto.getSku());
+        product.setStockQuantity(dto.getStockQuantity());
+        product.setActive(true);
+
+        if (dto.getBrandId() != null) {
+            Brand brand = brandRepository.findById(dto.getBrandId())
+                    .orElseThrow(() -> new RuntimeException("Brand not found"));
+            product.setBrand(brand);
+        }
+
+        if (dto.getCategoryIds() != null) {
+            Set<Category> categories = dto.getCategoryIds()
+                    .stream()
+                    .map(id -> categoryRepository.findById(id)
+                            .orElseThrow(() -> new RuntimeException("Category not found")))
+                    .collect(Collectors.toSet());
+            product.setCategories(categories);
+        }
+    }
+
+    private ProductResponseDTO mapEntityToDto(Product product) {
+
+        return ProductResponseDTO.builder()
+                .id(product.getId())
+                .name(product.getName())
+                .description(product.getDescription())
+                .price(product.getPrice())
+                .discountPrice(product.getDiscountPrice())
+                .active(product.getActive())
+                .sku(product.getSku())
+                .stockQuantity(product.getStockQuantity())
+                .brandName(product.getBrand() != null ? product.getBrand().getName() : null)
+                .categories(product.getCategories() != null
+                        ? product.getCategories().stream().map(Category::getName).collect(Collectors.toSet())
+                        : Set.of())
+                .images(product.getImages() != null
+                        ? product.getImages().stream().map(ProductImage::getImageUrl).toList()
+                        : List.of())
+                .createdAt(product.getCreatedAt())
+                .build();
+    }
+
+
+    public List<ProductResponseDTO> getByBrandId(Long brandId) {
+        return productRepository.findByBrandId(brandId)
+                .stream()
+                .map(this::mapEntityToDto)  // ঠিক করা হয়েছে
+                .toList();
+    }
+}
+
+
+-------------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.service;
+
+
+import com.abc.SpringBootSecqurityEx.dtos.ProductVariantDTO;
+import com.abc.SpringBootSecqurityEx.entity.Product;
+import com.abc.SpringBootSecqurityEx.entity.ProductVariant;
+import com.abc.SpringBootSecqurityEx.repository.ProductRepository;
+import com.abc.SpringBootSecqurityEx.repository.ProductVariantRepository;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class ProductVariantService {
+
+    private final ProductRepository productRepository;
+    private final ProductVariantRepository variantRepository;
+
+        public void create(ProductVariantDTO dto) {
+
+        Product product = productRepository.findById(dto.getProductId())
+                .orElseThrow(() -> new RuntimeException("Product not found"));
+
+        ProductVariant variant = new ProductVariant();
+        variant.setVariantName(dto.getVariantName());
+        variant.setVariantValue(dto.getVariantValue());
+        variant.setPriceAdjustment(dto.getPriceAdjustment());
+        variant.setStock(dto.getStock());
+        variant.setProduct(product);
+
+        variantRepository.save(variant);
+    }
+}
+
+
+-----------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.service;
+
+
+import com.abc.SpringBootSecqurityEx.dtos.secqurity.RoleDTO;
+import com.abc.SpringBootSecqurityEx.entity.Role;
+import com.abc.SpringBootSecqurityEx.repository.RoleRepository;
+import com.abc.SpringBootSecqurityEx.util.NotFoundException;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+
+@Service
+public class RoleService {
+
+    private final RoleRepository roleRepository;
+
+    public RoleService(final RoleRepository roleRepository) {
+        this.roleRepository = roleRepository;
+    }
+
+    public List<RoleDTO> findAll() {
+        final List<Role> roles = roleRepository.findAll(Sort.by("roleName"));
+        return roles.stream()
+                .map((role01) -> mapToDTO(role01, new RoleDTO()))
+                .toList();
+    }
+
+    public RoleDTO get(final String roleName) {
+        return roleRepository.findById(roleName)
+                .map(role01 -> mapToDTO(role01, new RoleDTO()))
+                .orElseThrow(NotFoundException::new);
+    }
+
+    public String create(final RoleDTO roleDTO) {
+        final Role role = new Role();
+        mapToEntity(roleDTO, role);
+        role.setRoleName(roleDTO.getRoleName());
+        return roleRepository.save(role).getRoleName();
+    }
+
+    public void update(final String roleName, final RoleDTO roleDTO) {
+        final Role role = roleRepository.findById(roleName)
+                .orElseThrow(NotFoundException::new);
+        mapToEntity(roleDTO, role);
+        roleRepository.save(role);
+    }
+
+    public void delete(final String roleName) {
+        roleRepository.deleteById(roleName);
+    }
+
+    private RoleDTO mapToDTO(final Role role, final RoleDTO roleDTO) {
+        roleDTO.setRoleName(role.getRoleName());
+        roleDTO.setRoleDescription(role.getRoleDescription());
+        return roleDTO;
+    }
+
+    private Role mapToEntity(final RoleDTO roleDTO, final Role role) {
+        role.setRoleDescription(roleDTO.getRoleDescription());
+        return role;
+    }
+
+    public boolean roleNameExists(final String roleName) {
+        return roleRepository.existsByRoleNameIgnoreCase(roleName);
+    }
+
+}
+
+
+---------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.service;
+
+
+import com.abc.SpringBootSecqurityEx.dtos.secqurity.UserDTO;
+import com.abc.SpringBootSecqurityEx.entity.Role;
+import com.abc.SpringBootSecqurityEx.entity.User;
+import com.abc.SpringBootSecqurityEx.repository.RoleRepository;
+import com.abc.SpringBootSecqurityEx.repository.UserRepository;
+import com.abc.SpringBootSecqurityEx.util.NotFoundException;
+import jakarta.transaction.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import java.time.OffsetDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
+
+
+@Transactional
+@Service
+public class UserService {
+
+    private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
+
+    @Autowired
+    PasswordEncoder passwordEncoder;
+
+    public UserService(final UserRepository userRepository, final RoleRepository roleRepository) {
+        this.userRepository = userRepository;
+        this.roleRepository = roleRepository;
+    }
+
+
+    public void initRoleAndUser() {
+
+        Role adminRole = new Role();
+        adminRole.setRoleName("ROLE_ADMIN");
+        adminRole.setRoleDescription("Admin role");
+        adminRole.setDateCreated(OffsetDateTime.now());
+        adminRole.setLastUpdated(OffsetDateTime.now());
+        roleRepository.save(adminRole);
+
+        Role userRole = new Role();
+        userRole.setRoleName("ROLE_USER");
+        userRole.setRoleDescription("Default role for newly created record");
+        userRole.setDateCreated(OffsetDateTime.now());
+        userRole.setLastUpdated(OffsetDateTime.now());
+        roleRepository.save(userRole);
+
+        Role roleMODERATOR = new Role();
+        roleMODERATOR.setRoleName("ROLE_MODERATOR");
+        roleMODERATOR.setRoleDescription("Default role for newly ROLE_MODERATOR record");
+        roleMODERATOR.setDateCreated(OffsetDateTime.now());
+        roleMODERATOR.setLastUpdated(OffsetDateTime.now());
+        roleRepository.save(roleMODERATOR);
+
+
+        User adminUser = new User();
+        adminUser.setUserName("admin123");
+        adminUser.setPassword(getEncodedPassword("admin@pass"));
+        adminUser.setUserFirstName("admin");
+        adminUser.setUserLastName("admin");
+        adminUser.setEmail("admin@gmail.com");
+        adminUser.setDateCreated(OffsetDateTime.now());
+        adminUser.setLastUpdated(OffsetDateTime.now());
+
+        Set<Role> adminRoles = new HashSet<>();
+        adminRoles.add(adminRole);
+        adminRoles.add(roleMODERATOR);
+
+        adminUser.setRoles(adminRoles);
+        userRepository.save(adminUser);
+
+    }
+
+
+    public List<UserDTO> findAll() {
+        final List<User> users = userRepository.findAll(Sort.by("userName"));
+//        List<UserDTO> userDTOS = new ArrayList<>();
+//        users.forEach(val -> {
+//            userDTOS.add( mapToDTO(val, new UserDTO()) );
+//        });
+//        return userDTOS;
+        return users.stream().map((user01) -> mapToDTO(user01, new UserDTO()))
+                .toList();
+    }
+
+    public UserDTO get(final String userName) {
+        return userRepository.findById(userName)
+                .map(user01 -> mapToDTO(user01, new UserDTO()))
+                .orElseThrow(NotFoundException::new);
+    }
+
+    public String create(final UserDTO userDTO) {
+        final User user = new User();
+        mapToEntity(userDTO, user);
+        user.setUserName(userDTO.getUserName());
+        return userRepository.save(user).getUserName();
+    }
+
+    public void update(final String userName, final UserDTO userDTO) {
+        final User user = userRepository.findById(userName)
+                .orElseThrow(NotFoundException::new);
+        mapToEntity(userDTO, user);
+        userRepository.save(user);
+    }
+
+    public void delete(final String userName) {
+        userRepository.deleteById(userName);
+    }
+
+    private UserDTO mapToDTO(final User user, final UserDTO userDTO) {
+
+        userDTO.setUserName(user.getUserName());
+        userDTO.setUserFirstName(user.getUserFirstName());
+        userDTO.setUserLastName(user.getUserLastName());
+        userDTO.setPassword(user.getPassword());
+        userDTO.setEmail(user.getEmail());
+        userDTO.setEnabled(user.getEnabled());
+        userDTO.setCredentialsNonExpired(user.getCredentialsNonExpired());
+        userDTO.setAccountNonExpired(user.getAccountNonExpired());
+        userDTO.setAccountNonLocked(user.getAccountNonLocked());
+        userDTO.setRoles(user.getRoles() == null ? null : user.getRoles().stream()
+                .map(role01 -> role01.getRoleName())
+                .toList());
+        return userDTO;
+    }
+
+    private User mapToEntity(final UserDTO userDTO, final User user) {
+        user.setUserFirstName(userDTO.getUserFirstName());
+        user.setUserLastName(userDTO.getUserLastName());
+        user.setPassword(userDTO.getPassword());
+        user.setEmail(userDTO.getEmail());
+        user.setEnabled(userDTO.getEnabled());
+        user.setCredentialsNonExpired(userDTO.getCredentialsNonExpired());
+        user.setAccountNonExpired(userDTO.getAccountNonExpired());
+        user.setAccountNonLocked(userDTO.getAccountNonLocked());
+        final List<Role> roles = roleRepository.findAllById(
+                userDTO.getRoles() == null ? Collections.emptyList() : userDTO.getRoles());
+        if (roles.size() != (userDTO.getRoles() == null ? 0 : userDTO.getRoles().size())) {
+            throw new NotFoundException("one of roles not found");
+        }
+        user.setRoles(roles.stream().collect(Collectors.toSet()));
+        return user;
+    }
+
+    public boolean userNameExists(final String userName) {
+        return userRepository.existsByUserNameIgnoreCase(userName);
+    }
+
+    public boolean emailExists(final String email) {
+        return userRepository.existsByEmailIgnoreCase(email);
+    }
+
+    public String getEncodedPassword(String password) {
+        return passwordEncoder.encode(password);
+    }
+
+
+    public Page<UserDTO> getAllUsers(int page, int size, String sortBy, String sortDir) {
+        Sort sort = Sort.by(Sort.Order.asc(sortBy)); // Default is ascending order
+        if ("desc".equalsIgnoreCase(sortDir)) {
+            sort = Sort.by(Sort.Order.desc(sortBy));
+        }
+
+        Pageable pageable = PageRequest.of(page, size, sort);
+
+        Page<UserDTO> userDTOPage = userRepository.findAll(pageable).map(user -> mapToDTO(user, new UserDTO()));
+        return userDTOPage;
+    }
+
+
+    public Page<UserDTO> searchUsers(String searchTerm, int page, int size, String sortBy, String sortDir) {
+        Sort sort = Sort.by(Sort.Order.asc(sortBy)); // Default to ascending order
+        if ("desc".equalsIgnoreCase(sortDir)) {
+            sort = Sort.by(Sort.Order.desc(sortBy));
+        }
+        Pageable pageable = PageRequest.of(page, size, sort);
+        Page<User> userPage = userRepository.findByUserNameContainingIgnoreCaseOrUserFirstNameContainingIgnoreCaseOrUserLastNameContainingIgnoreCaseOrEmailContainingIgnoreCase(
+                searchTerm, searchTerm, searchTerm, searchTerm, pageable);
+
+        return userPage.map(user -> mapToDTO(user, new UserDTO()));
+    }
+
+}
+
+-----------------------------------------------------------
+util(folder name)
+--------------------------------------------------------
+
+package com.abc.SpringBootSecqurityEx.util;
+
+
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+import java.util.List;
+@Getter
+@Setter
+@AllArgsConstructor
+@NoArgsConstructor
+
+public class ErrorResponse <T>{
+
+
+    private int status_code;
+    private String status;
+    private String reason;
+    private List<T> data;
+
+
+}
+
+
+-----------------------------------------------
+package com.abc.SpringBootSecqurityEx.util;
+
+
+import com.abc.SpringBootSecqurityEx.entity.StudentModel;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
+
+import java.util.ArrayList;
+
+@ControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(NotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ResponseEntity<ErrorResponse> handleDataNotFoundException(NotFoundException ex) {
+        ErrorResponse<StudentModel> errorResponse = new ErrorResponse();
+        errorResponse.setStatus_code(HttpStatus.NOT_FOUND.value());
+        errorResponse.setStatus("Failed");
+        errorResponse.setReason(ex.getMessage());
+        errorResponse.setData(new ArrayList<>());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(errorResponse);
+    }
+
+
+
+}
+
+
+-------------------------------------------------------
+package com.abc.SpringBootSecqurityEx.util;
+
+
+public class NotFoundException extends RuntimeException {
+
+    public NotFoundException() {
+        super();
+    }
+
+    public NotFoundException(final String message) {
+
+        super(message);
+    }
+
+}
+
+
+---------------------------------------------------------
+
+-----------------------------------------------
+
+package com.abc.SpringBootSecqurityEx;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class SpringBootSecqurityExApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(SpringBootSecqurityExApplication.class, args);
+	}
+
+}
+
+---------------------------------------------------------
+spring.application.name=SpringBootSecqurityEx
+
+# JWT Configuration
+app.jwt.secret=ThisIsAVeryLongAndStrongSecretKeyAtLeast64CharactersLongForHS512AlgorithmSecureUseOnly
+app.jwt.expiration=86400000
+
+# Database Configuration (update with your values)
+spring.datasource.url=jdbc:mysql://localhost:3307/securityDb
+spring.datasource.username=root
+spring.datasource.password=root
+
+# JPA Configuration
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+
+# Server Configuration
+server.port=8080
+
+file.upload-dir=uploads
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
